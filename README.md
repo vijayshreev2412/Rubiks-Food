@@ -154,4 +154,18 @@ docker compose ps
 - Replace Docker Compose with ECS, EKS, or Terraform-managed infrastructure if you need multi-node scale.
 - Wire up CI/CD (e.g., GitHub Actions building/pushing images to ECR, then redeploying the compose stack on EC2).
 
+## Observability
+
+- **APM with Datadog** – The backend now includes `dd-trace` instrumentation (auto + custom spans). Use the override file `docker-compose.datadog.yml` together with `docker-compose.yml` to launch the Datadog Agent sidecar:
+
+  ```bash
+  cp .env.datadog.example datadog.env   # set DD_API_KEY, DD_SITE, etc.
+  docker compose --env-file datadog.env \
+    -f docker-compose.yml \
+    -f docker-compose.datadog.yml \
+    up -d --build
+  ```
+
+  See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+
 Happy shipping! 🚀
