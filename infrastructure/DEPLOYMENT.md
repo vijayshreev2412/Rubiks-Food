@@ -101,3 +101,20 @@ Script summary:
 4. Builds and starts the Docker Compose stack, then prints useful service URLs.
 
 The script lives at `infrastructure/ec2_bootstrap.sh` for local editing or version control review. Inspect it before running in production environments.
+
+## Datadog APM (optional)
+
+1. Obtain a Datadog API key and decide which site to send data to.
+2. Copy `.env.datadog.example` to `datadog.env` (or export the `DD_*` variables another way) and set your secrets.
+3. Launch the stack with the Datadog override file to start the Agent container and wire up tracing:
+
+   ```bash
+   docker compose --env-file datadog.env \
+     -f docker-compose.yml \
+     -f docker-compose.datadog.yml \
+     up -d --build
+   ```
+
+4. Generate traffic, then confirm traces under **APM → Services → three-tier-backend** in the Datadog UI.
+
+See `infrastructure/DATADOG.md` for detailed guidance, production tips, and validation steps.
