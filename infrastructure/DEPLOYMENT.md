@@ -78,3 +78,26 @@ docker compose down -v               # destroy everything (including DB data)
 - Configure system monitoring (CloudWatch agent, Prometheus, etc.) and regular backups of the PostgreSQL volume.
 
 Once this baseline is running, you can promote the same containers to ECS/EKS or bake them into an AMI for Auto Scaling groups.
+
+---
+
+## Automated bootstrap script
+
+If you prefer a single command that performs steps 2–6 for you, run the helper script once you have SSH’d into the instance:
+
+```bash
+cd /opt   # or any directory you prefer
+curl -O https://raw.githubusercontent.com/<repo-owner>/<repo-name>/main/infrastructure/ec2_bootstrap.sh
+chmod +x ec2_bootstrap.sh
+APP_DIR=/opt/three-tier-app PUBLIC_HOST=<public-ip-or-dns> \
+  ./ec2_bootstrap.sh https://github.com/<repo-owner>/<repo-name>.git main
+```
+
+Script summary:
+
+1. Installs Docker Engine + Compose plugin using the official apt repository.
+2. Clones (or pulls) the Git repository into `APP_DIR`.
+3. Copies `.env.example` files and sets `VITE_API_BASE_URL=http://PUBLIC_HOST:4000`.
+4. Builds and starts the Docker Compose stack, then prints useful service URLs.
+
+The script lives at `infrastructure/ec2_bootstrap.sh` for local editing or version control review. Inspect it before running in production environments.
