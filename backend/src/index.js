@@ -1,5 +1,7 @@
 "use strict";
 
+// Initialize Datadog APM before any other module loads.
+require("dd-trace").init();
 require("dotenv").config();
 
 const tracer = require("dd-trace").init({

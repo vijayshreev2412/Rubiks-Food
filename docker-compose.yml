@@ -32,9 +32,34 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tasks_db
       RABBITMQ_URL: amqp://rabbitmq:5672
       RABBITMQ_QUEUE: task_events
+      NODE_ENV: production
+      DD_AGENT_HOST: datadog-agent
+      DD_TRACE_AGENT_PORT: 8126
+      DD_SERVICE: backend
+      DD_ENV: production
+      DD_VERSION: ${GIT_SHA:-local}
+    labels:
+      com.datadoghq.ad.check_names: '["http_check"]'
+      com.datadoghq.ad.init_configs: '[{}]'
+      com.datadoghq.ad.instances: |
+        [{
+          "name": "backend-health",
+          "url": "http://%%host%%:4000/health"
+        }]
+      com.datadoghq.ad.logs: |
+        [{
+          "source": "nodejs",
+          "service": "backend",
+          "log_processing_rules": [{
+            "type": "multi_line",
+            "name": "stack_traces",
+            "pattern": "^\\s"
+          }]
+        }]
     depends_on:
       - postgres
       - rabbitmq
+      - datadog-agent
     ports:
       - "4000:4000"
 
@@ -49,6 +74,24 @@ services:
       - "5173:80"
     depends_on:
       - backend
+
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    restart: unless-stopped
+    environment:
+      DD_API_KEY: ${DD_API_KEY}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_APM_ENABLED: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_PROCESS_AGENT_ENABLED: "true"
+      DD_CONTAINER_COLLECT_ALL: "true"
+    ports:
+      - "8126:8126"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
 
 volumes:
   postgres_data:
