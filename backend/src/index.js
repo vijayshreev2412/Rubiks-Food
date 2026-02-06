@@ -1,9 +1,8 @@
 "use strict";
 
-// Initialize Datadog APM before any other module loads.
-require("dd-trace").init();
 require("dotenv").config();
 
+// Initialize Datadog APM before any other module loads.
 const tracer = require("dd-trace").init({
   service: process.env.DD_SERVICE || "three-tier-backend",
   env: process.env.DD_ENV || process.env.NODE_ENV || "production",
@@ -21,6 +20,7 @@ const {
   consumeTaskEvents,
   closeRabbitmq,
 } = require("./rabbitmq");
+const { initWebsocketServer } = require("./websocket");
 
 const PORT = process.env.PORT || 4000;
 
@@ -149,10 +149,16 @@ async function start() {
     const server = app.listen(PORT, () => {
       console.log(`Backend listening on port ${PORT}`);
     });
+    const wss = initWebsocketServer({
+      server,
+      tracer,
+      path: process.env.WS_PATH || "/ws",
+    });
 
     const shutdown = async () => {
       console.log("Shutting down gracefully...");
       server.close();
+      wss.close();
       await closeRabbitmq();
       process.exit(0);
     };

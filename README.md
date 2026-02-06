@@ -166,6 +166,6 @@ docker compose ps
     up -d --build
   ```
 
-  See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+  The backend also exposes a `/ws` WebSocket endpoint that emits custom spans to validate WebSocket/DDP-style traffic. See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
 
 Happy shipping! 🚀
