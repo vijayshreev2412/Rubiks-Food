@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "dd:basic": "node src/basic-datadog-demo.js"
   },
   "keywords": [],
   "author": "",

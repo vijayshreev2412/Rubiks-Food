@@ -167,5 +167,6 @@ docker compose ps
   ```
 
   See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+  If you only need a minimal local custom-span demo (no Postgres/RabbitMQ), run `npm run dd:basic` inside `backend/` and follow the quickstart section in that same guide.
 
 Happy shipping! 🚀
