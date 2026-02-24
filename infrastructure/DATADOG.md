@@ -60,3 +60,15 @@ What happens:
 - **Dashboards**: import Datadog’s “Node.js APM Overview” dashboard for instant visualizations.
 
 With these steps, every deployment launched via Docker Compose gains full trace visibility in Datadog without changing the way you start the stack.
+
+## Datadog DBM process flowchart (customer version)
+
+If you need to explain how Datadog Database Monitoring is rolled out across different database types, use:
+
+- `infrastructure/DATADOG_DBM_FLOWCHART.md`
+
+It includes:
+
+- A single end-to-end flowchart with decision branches by database type.
+- Setup checkpoints for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
+- A simple customer talk track and validation checklist.
