@@ -1,6 +1,7 @@
 "use strict";
 
 const amqp = require("amqplib");
+const tracer = require("dd-trace");
 
 const queueName = process.env.RABBITMQ_QUEUE || "task_events";
 const rabbitUrl = process.env.RABBITMQ_URL || "amqp://localhost:5672";
@@ -35,8 +36,14 @@ async function publishTaskEvent(payload) {
     await initRabbitmq();
   }
 
+  const headers = {};
+  const activeSpan = tracer.scope().active();
+  if (activeSpan) {
+    tracer.inject(activeSpan.context(), "text_map", headers);
+  }
+
   const buffer = Buffer.from(JSON.stringify(payload));
-  channel.sendToQueue(queueName, buffer, { persistent: true });
+  channel.sendToQueue(queueName, buffer, { persistent: true, headers });
 }
 
 async function consumeTaskEvents(handler) {
@@ -50,9 +57,31 @@ async function consumeTaskEvents(handler) {
       if (!msg) {
         return;
       }
+
+      const parentContext = tracer.extract(
+        "text_map",
+        msg.properties.headers || {}
+      );
+
       const content = JSON.parse(msg.content.toString());
-      handler(content);
-      channel.ack(msg);
+
+      const span = tracer.startSpan("worker.handle_task_event", {
+        childOf: parentContext || undefined,
+        resource: content?.type ?? "unknown",
+        tags: { "task.id": content?.payload?.id },
+      });
+
+      tracer.scope().activate(span, async () => {
+        try {
+          await handler(content);
+        } catch (error) {
+          span.setTag("error", error);
+          console.error("[queue] Failed to handle event", content, error);
+        } finally {
+          span.finish();
+          channel.ack(msg);
+        }
+      });
     },
     { noAck: false }
   );
