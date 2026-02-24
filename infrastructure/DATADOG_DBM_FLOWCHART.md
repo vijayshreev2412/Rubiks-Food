@@ -32,6 +32,11 @@ flowchart TD
     O2 --> O3[Set oracle integration config with dbm: true]
     O3 --> V
 
+    E -->|MongoDB| G1[Use Datadog Agent 7.58+ and direct node connection]
+    G1 --> G2[Create monitoring role with clusterMonitor and read permissions]
+    G2 --> G3[Set mongodb integration config with dbm: true]
+    G3 --> V
+
     E -->|Other engine| U1[Check Datadog support matrix]
     U1 --> U2{DBM supported?}
     U2 -->|No| U3[Use Datadog integration plus logs and APM until DBM support is available]
@@ -54,6 +59,7 @@ flowchart TD
 | MySQL/MariaDB | `performance_schema` | Read access to performance schema and status views | On RDS/Aurora MySQL, enable required parameters in DB parameter groups. |
 | SQL Server | Query Store (recommended) | `VIEW SERVER STATE` and related read-only metadata access | On Azure SQL/Amazon RDS SQL Server, apply equivalent permissions and network access from Agent. |
 | Oracle | Performance/catalog dynamic views | `CREATE SESSION` plus catalog performance view access | For managed Oracle services, map grants to provider-specific role capabilities. |
+| MongoDB | DBM query and cluster metrics collection | `clusterMonitor` plus read access (`read` or `readAnyDatabase` depending on scope) | MongoDB Atlas DBM requires supported tiers (for example, M10+; shared/serverless tiers are not supported). |
 | Other engines | Vendor-specific diagnostics | Least-privilege read-only monitoring role | If DBM is not supported, use integrations, logs, and APM traces first. |
 
 ## Customer-facing talk track (simple)
@@ -62,7 +68,7 @@ flowchart TD
 2. **Prepare security**: create a read-only monitoring user and store credentials securely.
 3. **Enable telemetry**: turn on engine-specific performance features.
 4. **Connect Datadog**: deploy Agent and set integration config with `dbm: true`.
-5. **Validate**: confirm query performance, blocking, waits, and host metrics in DBM.
+5. **Validate**: confirm query performance, blocking or lock signals, waits (where applicable), and host metrics in DBM.
 6. **Operationalize**: build dashboards, define alerts, and document support ownership.
 
 ## Suggested validation checklist
