@@ -69,6 +69,6 @@ If you need to explain how Datadog Database Monitoring is rolled out across diff
 
 It includes:
 
-- A single end-to-end flowchart with decision branches by database type.
-- Setup checkpoints for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
-- A simple customer talk track and validation checklist.
+- A live DBM demo flowchart (symptom -> root cause -> validation -> monitoring).
+- Feature-by-feature explanations with click path and talk track.
+- An optional DBM enablement flow with engine prerequisite guidance.
