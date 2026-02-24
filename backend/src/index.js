@@ -1,15 +1,14 @@
 "use strict";
 
 // Initialize Datadog APM before any other module loads.
-require("dd-trace").init();
-require("dotenv").config();
-
 const tracer = require("dd-trace").init({
   service: process.env.DD_SERVICE || "three-tier-backend",
   env: process.env.DD_ENV || process.env.NODE_ENV || "production",
   version: process.env.DD_VERSION || "1.0.0",
   logInjection: process.env.DD_LOGS_INJECTION === "true",
 });
+
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -101,42 +100,34 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
   }
 });
 
+// The consumer in rabbitmq.js creates the worker span with proper
+// context propagation (inject/extract) and activates it before
+// calling this handler. Any auto-instrumented call (pg, http)
+// made here is automatically parented to that span.
 async function handleTaskEvent(event) {
-  const span = tracer.startSpan("worker.handle_task_event", {
-    resource: event?.type ?? "unknown",
-    tags: {
-      "task.id": event?.payload?.id,
-    },
-  });
+  const span = tracer.scope().active();
 
-  try {
-    switch (event?.type) {
-      case "TASK_CREATED":
-        await db.query("UPDATE tasks SET status = $1 WHERE id = $2", [
-          "queued",
-          event.payload.id,
-        ]);
-        span.setTag("task.status", "queued");
-        console.log("[queue] Task queued", event.payload.id);
-        break;
-      case "TASK_STATUS_CHANGED":
-        span.setTag("task.status", event.payload.status);
-        console.log(
-          "[queue] Status change propagated",
-          event.payload.id,
-          "->",
-          event.payload.status
-        );
-        break;
-      default:
-        console.log("[queue] Unhandled event type", event?.type);
-        span.setTag("queue.unhandled_event", true);
-    }
-  } catch (error) {
-    span.setTag("error", error);
-    console.error("[queue] Failed to handle event", event, error);
-  } finally {
-    span.finish();
+  switch (event?.type) {
+    case "TASK_CREATED":
+      await db.query("UPDATE tasks SET status = $1 WHERE id = $2", [
+        "queued",
+        event.payload.id,
+      ]);
+      if (span) span.setTag("task.status", "queued");
+      console.log("[queue] Task queued", event.payload.id);
+      break;
+    case "TASK_STATUS_CHANGED":
+      if (span) span.setTag("task.status", event.payload.status);
+      console.log(
+        "[queue] Status change propagated",
+        event.payload.id,
+        "->",
+        event.payload.status
+      );
+      break;
+    default:
+      console.log("[queue] Unhandled event type", event?.type);
+      if (span) span.setTag("queue.unhandled_event", true);
   }
 }
 

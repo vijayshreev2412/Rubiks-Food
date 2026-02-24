@@ -61,6 +61,277 @@ What happens:
 
 With these steps, every deployment launched via Docker Compose gains full trace visibility in Datadog without changing the way you start the stack.
 
+---
+
+## Custom Spans for Asynchronous Traces
+
+This section explains how to create custom spans that correctly track asynchronous work across your Node.js application using `dd-trace`. It covers every major pattern: simple async/await spans, scope activation, parent-child relationships, and context propagation across message queues.
+
+All examples below assume the tracer has been initialised at the top of your entry point:
+
+```javascript
+const tracer = require("dd-trace").init({
+  service: "three-tier-backend",
+});
+```
+
+### 1 — `tracer.trace()`: the high-level helper
+
+`tracer.trace(name, [options], fn)` creates a span, activates it for the duration of `fn`, and finishes it automatically. If `fn` returns a `Promise`, the span stays open until the promise settles, and errors are recorded for you.
+
+```javascript
+app.get("/api/tasks/:id", async (req, res) => {
+  await tracer.trace("tasks.fetch_single", { resource: "GET /api/tasks/:id" }, async (span) => {
+    span.setTag("task.id", req.params.id);
+
+    const result = await db.query("SELECT * FROM tasks WHERE id = $1", [req.params.id]);
+
+    if (result.rowCount === 0) {
+      span.setTag("task.found", false);
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    span.setTag("task.found", true);
+    res.json(result.rows[0]);
+  });
+});
+```
+
+Key points:
+
+- The callback receives the active `span` as its first argument.
+- Returning an `async` function (or a `Promise`) makes the span cover the full asynchronous lifetime.
+- Errors thrown inside the callback are automatically tagged on the span with `error.message`, `error.type`, and `error.stack`.
+
+### 2 — `tracer.startSpan()` + manual finish
+
+Use this when you need full control, e.g. when the span must live beyond a single function or you need to pass it around.
+
+```javascript
+async function handleTaskEvent(event) {
+  const span = tracer.startSpan("worker.handle_task_event", {
+    resource: event?.type ?? "unknown",
+    tags: { "task.id": event?.payload?.id },
+  });
+
+  try {
+    const result = await tracer.scope().activate(span, async () => {
+      // Any auto-instrumented call made here (pg, http, etc.)
+      // is parented to this span automatically.
+      await db.query("UPDATE tasks SET status = $1 WHERE id = $2", [
+        "queued",
+        event.payload.id,
+      ]);
+      return { status: "queued" };
+    });
+
+    span.setTag("task.status", result.status);
+  } catch (error) {
+    span.setTag("error", error);
+    throw error;
+  } finally {
+    span.finish();
+  }
+}
+```
+
+Key points:
+
+- **Always call `span.finish()`** — without it the span is silently dropped.
+- **Activate the span** with `tracer.scope().activate(span, fn)` so that any auto-instrumented call inside `fn` (database queries, HTTP requests) becomes a child span of your custom span.
+- Place `span.finish()` in a `finally` block so it runs even on error.
+
+### 3 — Nested child spans
+
+Create explicit parent-child relationships with the `childOf` option:
+
+```javascript
+async function enrichTask(task, parentSpan) {
+  const span = tracer.startSpan("tasks.enrich", {
+    childOf: parentSpan,
+    tags: { "task.id": task.id },
+  });
+
+  try {
+    await tracer.scope().activate(span, async () => {
+      const metadata = await fetchExternalMetadata(task.id);
+      await db.query("UPDATE tasks SET description = $1 WHERE id = $2", [
+        metadata.description,
+        task.id,
+      ]);
+    });
+    span.setTag("enrich.success", true);
+  } catch (error) {
+    span.setTag("error", error);
+  } finally {
+    span.finish();
+  }
+}
+```
+
+When you omit `childOf`, `startSpan` uses the currently active span from `tracer.scope().active()`. Passing `childOf` explicitly is useful when the parent is not the currently active scope (e.g. the span was created elsewhere and passed as an argument).
+
+### 4 — Context propagation across a message queue
+
+In an event-driven architecture the producer and consumer run in different contexts (often different processes). To connect them into a single distributed trace, **inject** the trace context into message headers on the publish side and **extract** it on the consume side.
+
+#### Producer (inject)
+
+```javascript
+async function publishTaskEvent(payload) {
+  const headers = {};
+  const span = tracer.scope().active();
+
+  if (span) {
+    tracer.inject(span.context(), "text_map", headers);
+  }
+
+  channel.sendToQueue(
+    queueName,
+    Buffer.from(JSON.stringify(payload)),
+    { persistent: true, headers }
+  );
+}
+```
+
+`tracer.inject()` serialises the active span's trace ID, span ID, and sampling priority into the `headers` object. AMQP message headers travel with the message to the consumer.
+
+#### Consumer (extract)
+
+```javascript
+channel.consume(queueName, (msg) => {
+  if (!msg) return;
+
+  const parentContext = tracer.extract("text_map", msg.properties.headers || {});
+  const content = JSON.parse(msg.content.toString());
+
+  const span = tracer.startSpan("worker.handle_task_event", {
+    childOf: parentContext || undefined,
+    resource: content?.type ?? "unknown",
+    tags: { "task.id": content?.payload?.id },
+  });
+
+  tracer.scope().activate(span, async () => {
+    try {
+      await handler(content);
+    } catch (error) {
+      span.setTag("error", error);
+    } finally {
+      span.finish();
+      channel.ack(msg);
+    }
+  });
+});
+```
+
+With inject/extract, every span the consumer creates is attached to the same trace that the HTTP request initiated, giving you a single flame graph from the REST call all the way through the message queue to the worker.
+
+### 5 — Span links (loosely-coupled async)
+
+When a consumer processes messages from **multiple** producers (batch processing, fan-in), a strict parent-child relationship doesn't make sense. Use **span links** instead:
+
+```javascript
+channel.consume(queueName, (msg) => {
+  if (!msg) return;
+
+  const producerContext = tracer.extract("text_map", msg.properties.headers || {});
+  const links = producerContext ? [{ context: producerContext }] : [];
+
+  const span = tracer.startSpan("worker.batch_process", {
+    links,
+    tags: { "batch.source": "rabbitmq" },
+  });
+
+  tracer.scope().activate(span, async () => {
+    try {
+      await processBatch(JSON.parse(msg.content.toString()));
+    } catch (error) {
+      span.setTag("error", error);
+    } finally {
+      span.finish();
+      channel.ack(msg);
+    }
+  });
+});
+```
+
+Span links appear in the Datadog Trace Explorer as "Related Spans" rather than as parents, which is the correct semantic for loosely-coupled or batched async work.
+
+### 6 — Wrapping utility functions with `tracer.wrap()`
+
+If you have a plain function you want traced every time it's called:
+
+```javascript
+const fetchExternalMetadata = tracer.wrap(
+  "external.metadata_fetch",
+  { resource: "metadata-api" },
+  async function fetchExternalMetadata(taskId) {
+    const res = await fetch(`https://metadata.internal/api/tasks/${taskId}`);
+    return res.json();
+  }
+);
+```
+
+`tracer.wrap()` returns a new function with the same signature. Each invocation creates and finishes a span automatically, and async/promise return values are respected.
+
+### 7 — Error handling best practices
+
+| Pattern | How errors surface |
+| --- | --- |
+| `tracer.trace(name, async (span) => { ... })` | Errors thrown inside the callback are **automatically** tagged on the span. |
+| `tracer.startSpan()` + manual finish | You **must** call `span.setTag("error", error)` yourself before `span.finish()`. |
+| `tracer.wrap()` | Behaves like `tracer.trace()` — errors are auto-captured. |
+
+For `startSpan`, a resilient pattern:
+
+```javascript
+const span = tracer.startSpan("my.operation");
+try {
+  await tracer.scope().activate(span, () => doWork());
+} catch (error) {
+  span.setTag("error", error);
+  throw error;
+} finally {
+  span.finish();
+}
+```
+
+### 8 — Common pitfalls
+
+| Pitfall | Fix |
+| --- | --- |
+| Span never appears in Datadog | You forgot `span.finish()`. Always use `finally`. |
+| Child spans are orphaned (appear as separate traces) | The parent span is not active in the current scope. Use `tracer.scope().activate(parentSpan, fn)` or pass `childOf` explicitly. |
+| `async/await` loses scope | `scope.bind()` does **not** work with bare `async/await`. Wrap the awaited promise in a function passed to `scope.activate()`. |
+| Queue consumer spans are disconnected from producer | You are not injecting/extracting context via message headers. See §4 above. |
+| Excessive span volume | Don't create a span for every trivial operation. Span custom work like queue processing, external API calls, or business-logic steps that you want visible in flame graphs. |
+
+### Quick-reference cheat sheet
+
+```text
+┌────────────────────────────────────────────────────────────────┐
+│  PATTERN               USE WHEN                               │
+├────────────────────────────────────────────────────────────────┤
+│  tracer.trace()        One-shot async work within a handler.  │
+│                        Span auto-finishes, errors auto-tagged.│
+│                                                                │
+│  tracer.startSpan()    Span must outlive a single callback or │
+│  + scope.activate()    be passed between functions.            │
+│  + span.finish()       You handle errors and finish manually.  │
+│                                                                │
+│  tracer.wrap()         Reusable utility function that should  │
+│                        always produce a span on each call.     │
+│                                                                │
+│  inject / extract      Propagate context across process or    │
+│                        transport boundaries (queues, HTTP).    │
+│                                                                │
+│  span links            Connect spans from multiple producers  │
+│                        without a strict parent-child tree.     │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Datadog DBM process flowchart (customer version)
 
 If you need to explain how Datadog Database Monitoring is rolled out across different database types, use:
