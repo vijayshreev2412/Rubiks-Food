@@ -166,7 +166,7 @@ docker compose ps
     up -d --build
   ```
 
-  See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+  The backend also exposes a `/ws` WebSocket endpoint that emits custom spans to validate WebSocket/DDP-style traffic. See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
 
 - **DBM flowchart for customer walkthroughs** - Use `infrastructure/DATADOG_DBM_FLOWCHART.md` to explain the setup process for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
 
