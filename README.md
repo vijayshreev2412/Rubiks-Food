@@ -167,6 +167,7 @@ docker compose ps
   ```
 
   See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+  If you only need a minimal local custom-span demo (no Postgres/RabbitMQ), run `npm run dd:basic` inside `backend/` and follow the quickstart section in that same guide.
 
 - **DBM flowchart for customer walkthroughs** - Use `infrastructure/DATADOG_DBM_FLOWCHART.md` to explain the setup process for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
 

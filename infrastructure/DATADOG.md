@@ -2,6 +2,75 @@
 
 This guide layers Datadog tracing on top of the existing Docker Compose stack. It covers instrumentation, agent deployment, and verification using the Datadog UI.
 
+### Quickstart: local Node.js custom span (from scratch)
+
+Use this when you want a minimal setup and only need to prove custom spans work.
+
+1. Install backend dependencies:
+
+   ```bash
+   cd backend
+   npm install
+   ```
+
+2. Start a local Datadog Agent (APM enabled):
+
+   ```bash
+   export DD_API_KEY=<your_api_key>
+   export DD_SITE=datadoghq.com
+
+   docker rm -f dd-local-agent >/dev/null 2>&1 || true
+   docker run -d --name dd-local-agent \
+     -e DD_API_KEY="$DD_API_KEY" \
+     -e DD_SITE="${DD_SITE}" \
+     -e DD_APM_ENABLED=true \
+     -e DD_APM_NON_LOCAL_TRAFFIC=true \
+     -p 8126:8126 \
+     gcr.io/datadoghq/agent:7
+   ```
+
+3. Run the basic demo app (no Postgres/RabbitMQ required):
+
+   ```bash
+   DD_TRACE_AGENT_URL=http://127.0.0.1:8126 \
+   DD_SERVICE=node-dd-basic-demo \
+   DD_ENV=local \
+   npm run dd:basic
+   ```
+
+4. In another terminal, generate traces:
+
+   ```bash
+   curl "http://localhost:3000/work?userId=42"
+   curl "http://localhost:3000/work?userId=99"
+   ```
+
+5. Validate in Datadog:
+   - Open **APM -> Services** and find `node-dd-basic-demo`.
+   - Open a trace and confirm span name `custom.operation`.
+   - Confirm custom tags like `key:value` and `custom.user_id`.
+
+The demo route in `backend/src/basic-datadog-demo.js` is the Node.js equivalent of:
+
+```python
+with tracer.trace("custom.operation") as span:
+    span.set_tag("key", "value")
+```
+
+In Node.js, this is:
+
+```js
+await tracer.trace("custom.operation", async (span) => {
+  span.setTag("key", "value");
+});
+```
+
+To stop and remove the local agent:
+
+```bash
+docker rm -f dd-local-agent
+```
+
 ### Prerequisites
 
 1. Datadog account with an API key that has APM access.
