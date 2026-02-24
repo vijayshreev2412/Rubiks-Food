@@ -169,5 +169,6 @@ docker compose ps
   See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
 
 - **DBM flowchart for customer walkthroughs** - Use `infrastructure/DATADOG_DBM_FLOWCHART.md` to explain the setup process for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
+- **DBM demonstration guide** - Use `infrastructure/DATADOG_DBM_DEMO.md` for a feature-by-feature demo walkthrough with a Mermaid flowchart, explanations, a 10-minute script, and a value summary.
 
 Happy shipping! 🚀

@@ -72,3 +72,16 @@ It includes:
 - A single end-to-end flowchart with decision branches by database type.
 - Setup checkpoints for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
 - A simple customer talk track and validation checklist.
+
+## Datadog DBM demonstration guide
+
+For a feature-by-feature walkthrough of DBM (useful for demos, POCs, and internal enablement), see:
+
+- `infrastructure/DATADOG_DBM_DEMO.md`
+
+It includes:
+
+- A Mermaid flowchart covering the full demo path from Database List through Alerts and Dashboards.
+- Detailed explanations of each DBM feature (Query Metrics, Explain Plans, Wait Analysis, Blocking Queries, APM correlation, and more).
+- A 10-minute demo script with timing and talking points.
+- A value summary for closing the demo.
