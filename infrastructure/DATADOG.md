@@ -52,6 +52,59 @@ What happens:
 3. Drill down into traces to see Express endpoints, queries, and the `worker.handle_task_event` custom span.
 4. Enable Log Explorer or Dashboards if you turned on log injection (`DD_LOGS_INJECTION=true`).
 
+### 3b. WebSocket observability (DDP-style traffic)
+
+The backend includes a lightweight WebSocket endpoint at `/ws` that emits custom spans so you can validate WebSocket activity in Datadog. Each connection and message produces:
+
+- `ws.connection`
+- `ws.message`
+- `ws.send`
+
+Local test (after the stack is running):
+
+```bash
+npx wscat -c ws://localhost:4000/ws
+```
+
+Then send a few DDP-style payloads:
+
+```
+{"msg":"connect","version":"1","support":["1"]}
+{"msg":"ping","id":"1"}
+{"msg":"method","method":"tasks.create","id":"2","params":[{"title":"ddp"}]}
+{"msg":"sub","name":"tasks","id":"3"}
+```
+
+In the Datadog UI, filter service `three-tier-backend` by resources prefixed with `ws.` or search for the span names above. Message spans include tags like `ddp.msg`, `ddp.method`, and `ddp.sub`.
+
+> Meteor note: DDP runs over SockJS, so the `ws` package hook will not instrument Meteor DDP automatically. For Meteor apps, add custom spans around DDP connections, methods, and publications. Minimal server sketch:
+>
+> ```js
+> import tracer from "dd-trace";
+> import { Meteor } from "meteor/meteor";
+>
+> Meteor.server.onConnection((connection) => {
+>   const span = tracer.startSpan("ddp.connection", {
+>     tags: { "ddp.connection_id": connection.id },
+>   });
+>   connection.onClose(() => span.finish());
+> });
+>
+> Meteor.methods({
+>   "tasks.create"(payload) {
+>     return tracer.trace("ddp.method", { resource: "tasks.create" }, () => {
+>       // business logic
+>     });
+>   },
+> });
+>
+> Meteor.publish("tasks", function publishTasks() {
+>   return tracer.trace("ddp.publish", { resource: "tasks" }, () =>
+>     Tasks.find()
+>   );
+> });
+> ```
+
 ### 4. Production tips
 
 - **API key rotation**: store `DD_API_KEY` in AWS Systems Manager Parameter Store or AWS Secrets Manager and inject it at deploy time.
