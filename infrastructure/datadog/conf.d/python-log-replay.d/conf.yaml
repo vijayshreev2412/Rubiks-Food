@@ -1,0 +1,9 @@
+logs:
+  - type: file
+    path: /Users/vijayshree.iyer/Downloads/destination.log
+    service: python-log-replay
+    source: python
+    sourcecategory: sourcecode
+    tags:
+      - env:local
+

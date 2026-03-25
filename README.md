@@ -204,6 +204,52 @@ Optional flags:
 
 Your sample `lambda-lvmsa.log` includes ANSI color codes (for example `\x1b[32m` and `\x1b[39m`). The script preserves lines exactly as-is so your output remains faithful to the source.
 
+### 5) Monitor this script in Datadog
+
+You can monitor both replay health (metrics) and output logs in Datadog.
+
+#### A) Enable Datadog metrics from the script (DogStatsD)
+
+Run the script with Datadog enabled:
+
+```bash
+DD_AGENT_HOST=127.0.0.1 DD_DOGSTATSD_PORT=8125 DD_ENV=local \
+python3 logger.py \
+  --source "/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log" \
+  --dest "/Users/vijayshree.iyer/Downloads/destination.log" \
+  --repeat 2 \
+  --delay 0.10 \
+  --dd-enabled \
+  --dd-service python-log-replay
+```
+
+Metrics emitted:
+- `log_replay.running` (gauge: 1 while running, 0 when stopped)
+- `log_replay.lines_written` (count)
+- `log_replay.replay_runs_completed` (count)
+- `log_replay.runtime_seconds` (histogram)
+- `log_replay.errors` (count, only on failures)
+
+Suggested Datadog monitors:
+- **No lines written** in last 5m:
+  - `sum:log_replay.lines_written{service:python-log-replay,env:local}.as_count() < 1`
+- **Any replay errors** in last 5m:
+  - `sum:log_replay.errors{service:python-log-replay,env:local}.as_count() > 0`
+
+#### B) Ship destination log file to Datadog Logs
+
+This repo includes a Datadog Agent log config example:
+
+- `infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml`
+
+If your Datadog Agent runs on your laptop:
+1. Copy that file into your local Agent config folder:
+   - macOS (Homebrew Agent): `/opt/datadog-agent/etc/conf.d/python-log-replay.d/conf.yaml`
+   - Linux Agent: `/etc/datadog-agent/conf.d/python-log-replay.d/conf.yaml`
+2. Restart the Agent.
+3. In Datadog Log Explorer, filter by:
+   - `service:python-log-replay`
+
 ## Observability
 
 - **APM with Datadog** – The backend now includes `dd-trace` instrumentation (auto + custom spans). Use the override file `docker-compose.datadog.yml` together with `docker-compose.yml` to launch the Datadog Agent sidecar:
