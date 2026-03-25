@@ -1,0 +1,9 @@
+logs:
+  - type: file
+    path: /Users/vijayshree.iyer/Downloads/lambda-lvmsa.log
+    service: lvmsa-log-export
+    source: python
+    sourcecategory: sourcecode
+    start_position: beginning
+    tags:
+      - env:local

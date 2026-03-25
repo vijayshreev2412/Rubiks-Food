@@ -154,6 +154,124 @@ docker compose ps
 - Replace Docker Compose with ECS, EKS, or Terraform-managed infrastructure if you need multi-node scale.
 - Wire up CI/CD (e.g., GitHub Actions building/pushing images to ECR, then redeploying the compose stack on EC2).
 
+## Local Python log replay utility
+
+If you want to replay an existing log file into another file with a delay between lines (similar to real-time log streaming), this repo includes `logger.py`.
+
+### 1) Install Python locally
+
+Check Python:
+
+```bash
+python3 --version
+```
+
+If needed:
+
+- macOS: `brew install python`
+- Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y python3 python3-venv`
+
+### 2) (Optional) create a virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3) Run the script with your files
+
+```bash
+python3 logger.py \
+  --source "/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log" \
+  --dest "/Users/vijayshree.iyer/Downloads/destination.log" \
+  --repeat 2 \
+  --delay 0.10
+```
+
+This reproduces your original snippet behavior:
+- reads the source log from start to end
+- appends each line to destination
+- flushes output on every line
+- waits `0.10s` between lines
+- repeats the full source file 2 times
+
+Optional flags:
+- `--overwrite` to replace destination contents instead of appending
+- `--repeat N` to control replay loop count
+- `--delay SECONDS` to adjust speed
+
+### 4) Notes for ANSI-colored logs
+
+Your sample `lambda-lvmsa.log` includes ANSI color codes (for example `\x1b[32m` and `\x1b[39m`). The script preserves lines exactly as-is so your output remains faithful to the source.
+
+### 5) Monitor this script in Datadog
+
+You can monitor both replay health (metrics) and output logs in Datadog.
+
+#### A) Enable Datadog metrics from the script (DogStatsD)
+
+Run the script with Datadog enabled:
+
+```bash
+DD_AGENT_HOST=127.0.0.1 DD_DOGSTATSD_PORT=8125 DD_ENV=local \
+python3 logger.py \
+  --source "/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log" \
+  --dest "/Users/vijayshree.iyer/Downloads/destination.log" \
+  --repeat 2 \
+  --delay 0.10 \
+  --dd-enabled \
+  --dd-service python-log-replay
+```
+
+Metrics emitted:
+- `log_replay.running` (gauge: 1 while running, 0 when stopped)
+- `log_replay.lines_written` (count)
+- `log_replay.replay_runs_completed` (count)
+- `log_replay.runtime_seconds` (histogram)
+- `log_replay.errors` (count, only on failures)
+
+Suggested Datadog monitors:
+- **No lines written** in last 5m:
+  - `sum:log_replay.lines_written{service:python-log-replay,env:local}.as_count() < 1`
+- **Any replay errors** in last 5m:
+  - `sum:log_replay.errors{service:python-log-replay,env:local}.as_count() > 0`
+
+#### B) Export `lambda-lvmsa.log` with your host Datadog Agent
+
+This repo includes a Datadog Agent log config example:
+
+- `infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml`
+
+This config is already set to tail your file directly from the start:
+- path: `/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log`
+- service: `lvmsa-log-export`
+- `start_position: beginning` (exports existing lines, not only new ones)
+
+If your Datadog Agent is already running on the host:
+1. Copy the config into the local Agent folder:
+   - macOS (Homebrew Agent):
+     ```bash
+     sudo mkdir -p /opt/datadog-agent/etc/conf.d/python-log-replay.d
+     sudo cp infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml \
+       /opt/datadog-agent/etc/conf.d/python-log-replay.d/conf.yaml
+     ```
+   - Linux Agent:
+     ```bash
+     sudo mkdir -p /etc/datadog-agent/conf.d/python-log-replay.d
+     sudo cp infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml \
+       /etc/datadog-agent/conf.d/python-log-replay.d/conf.yaml
+     ```
+2. Restart Agent:
+   ```bash
+   sudo datadog-agent restart
+   ```
+3. Verify Agent sees the file:
+   ```bash
+   sudo datadog-agent status | rg "python-log-replay|lambda-lvmsa.log|Logs Agent" -n
+   ```
+4. In Datadog Log Explorer, filter by:
+   - `service:lvmsa-log-export`
+
 ## Observability
 
 - **APM with Datadog** – The backend now includes `dd-trace` instrumentation (auto + custom spans). Use the override file `docker-compose.datadog.yml` together with `docker-compose.yml` to launch the Datadog Agent sidecar:
