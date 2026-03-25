@@ -236,19 +236,41 @@ Suggested Datadog monitors:
 - **Any replay errors** in last 5m:
   - `sum:log_replay.errors{service:python-log-replay,env:local}.as_count() > 0`
 
-#### B) Ship destination log file to Datadog Logs
+#### B) Export `lambda-lvmsa.log` with your host Datadog Agent
 
 This repo includes a Datadog Agent log config example:
 
 - `infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml`
 
-If your Datadog Agent runs on your laptop:
-1. Copy that file into your local Agent config folder:
-   - macOS (Homebrew Agent): `/opt/datadog-agent/etc/conf.d/python-log-replay.d/conf.yaml`
-   - Linux Agent: `/etc/datadog-agent/conf.d/python-log-replay.d/conf.yaml`
-2. Restart the Agent.
-3. In Datadog Log Explorer, filter by:
-   - `service:python-log-replay`
+This config is already set to tail your file directly from the start:
+- path: `/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log`
+- service: `lvmsa-log-export`
+- `start_position: beginning` (exports existing lines, not only new ones)
+
+If your Datadog Agent is already running on the host:
+1. Copy the config into the local Agent folder:
+   - macOS (Homebrew Agent):
+     ```bash
+     sudo mkdir -p /opt/datadog-agent/etc/conf.d/python-log-replay.d
+     sudo cp infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml \
+       /opt/datadog-agent/etc/conf.d/python-log-replay.d/conf.yaml
+     ```
+   - Linux Agent:
+     ```bash
+     sudo mkdir -p /etc/datadog-agent/conf.d/python-log-replay.d
+     sudo cp infrastructure/datadog/conf.d/python-log-replay.d/conf.yaml \
+       /etc/datadog-agent/conf.d/python-log-replay.d/conf.yaml
+     ```
+2. Restart Agent:
+   ```bash
+   sudo datadog-agent restart
+   ```
+3. Verify Agent sees the file:
+   ```bash
+   sudo datadog-agent status | rg "python-log-replay|lambda-lvmsa.log|Logs Agent" -n
+   ```
+4. In Datadog Log Explorer, filter by:
+   - `service:lvmsa-log-export`
 
 ## Observability
 
