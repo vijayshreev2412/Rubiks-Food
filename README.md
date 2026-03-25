@@ -154,6 +154,56 @@ docker compose ps
 - Replace Docker Compose with ECS, EKS, or Terraform-managed infrastructure if you need multi-node scale.
 - Wire up CI/CD (e.g., GitHub Actions building/pushing images to ECR, then redeploying the compose stack on EC2).
 
+## Local Python log replay utility
+
+If you want to replay an existing log file into another file with a delay between lines (similar to real-time log streaming), this repo includes `logger.py`.
+
+### 1) Install Python locally
+
+Check Python:
+
+```bash
+python3 --version
+```
+
+If needed:
+
+- macOS: `brew install python`
+- Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y python3 python3-venv`
+
+### 2) (Optional) create a virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3) Run the script with your files
+
+```bash
+python3 logger.py \
+  --source "/Users/vijayshree.iyer/Downloads/lambda-lvmsa.log" \
+  --dest "/Users/vijayshree.iyer/Downloads/destination.log" \
+  --repeat 2 \
+  --delay 0.10
+```
+
+This reproduces your original snippet behavior:
+- reads the source log from start to end
+- appends each line to destination
+- flushes output on every line
+- waits `0.10s` between lines
+- repeats the full source file 2 times
+
+Optional flags:
+- `--overwrite` to replace destination contents instead of appending
+- `--repeat N` to control replay loop count
+- `--delay SECONDS` to adjust speed
+
+### 4) Notes for ANSI-colored logs
+
+Your sample `lambda-lvmsa.log` includes ANSI color codes (for example `\x1b[32m` and `\x1b[39m`). The script preserves lines exactly as-is so your output remains faithful to the source.
+
 ## Observability
 
 - **APM with Datadog** – The backend now includes `dd-trace` instrumentation (auto + custom spans). Use the override file `docker-compose.datadog.yml` together with `docker-compose.yml` to launch the Datadog Agent sidecar:
