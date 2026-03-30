@@ -32,6 +32,9 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tasks_db
       RABBITMQ_URL: amqp://rabbitmq:5672
       RABBITMQ_QUEUE: task_events
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_FAILURE_SIMULATION_ENABLED: ${WORKER_FAILURE_SIMULATION_ENABLED:-false}
+      WORKER_FAILURE_KEYWORD: ${WORKER_FAILURE_KEYWORD:-[fail-worker]}
       NODE_ENV: production
       DD_AGENT_HOST: datadog-agent
       DD_TRACE_AGENT_PORT: 8126

@@ -11,6 +11,7 @@ const STATUS_COLORS = {
   pending: "#f97316",
   queued: "#0ea5e9",
   completed: "#22c55e",
+  failed: "#ef4444",
 };
 
 function App() {
@@ -166,7 +167,10 @@ function App() {
                     </div>
                     <span
                       className="status-pill"
-                      style={{ backgroundColor: STATUS_COLORS[task.status] }}
+                      style={{
+                        backgroundColor:
+                          STATUS_COLORS[task.status] || STATUS_COLORS.pending,
+                      }}
                     >
                       {task.status}
                     </span>
@@ -174,7 +178,13 @@ function App() {
                   <div className="task-meta">
                     <span>
                       Created {new Date(task.created_at).toLocaleString()}
+                      {typeof task.worker_attempts === "number" &&
+                        task.worker_attempts > 0 &&
+                        ` • attempts: ${task.worker_attempts}`}
                     </span>
+                    {task.last_error && (
+                      <span className="error">Worker error: {task.last_error}</span>
+                    )}
                     <div className="task-actions">
                       <button
                         onClick={() => handleStatusUpdate(task.id, "completed")}

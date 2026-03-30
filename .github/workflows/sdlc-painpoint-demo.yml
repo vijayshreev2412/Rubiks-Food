@@ -1,0 +1,42 @@
+name: SDLC Painpoint Demo
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - cursor/datadog-workflow-painpoint-demo-a88e
+
+jobs:
+  run-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DD_API_KEY: demo-only-noop-key
+      DD_SITE: datadoghq.com
+      DD_ENV: ci
+      DD_SERVICE: three-tier-backend-ci
+      DD_VERSION: ci
+      DD_LOGS_INJECTION: "false"
+      WORKER_FAILURE_KEYWORD: "[fail-worker]"
+      WORKER_FAILURE_SIMULATION_ENABLED: "true"
+      WORKER_MAX_RETRIES: "2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start stack for failure scenario
+        run: docker compose up -d --build postgres rabbitmq backend
+
+      - name: Run failure-path automation check
+        run: ./scripts/datadog_painpoint_demo.sh --mode failure
+
+      - name: Print backend logs when failure occurs
+        if: failure()
+        run: docker compose logs backend
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v

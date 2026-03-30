@@ -36,7 +36,8 @@ infrastructure/         Deployment runbooks and IaC placeholders
 
 The worker loop inside `backend/src/index.js` consumes RabbitMQ events:
 
-- On `TASK_CREATED` it marks the DB record as `queued` to emulate background work kicking in.
+- On `TASK_CREATED` it marks the DB record as `queued`, records worker attempt metadata, and retries transient failures.
+- Exhausted retries are routed to a dead-letter queue and task status is updated to `failed` with the latest error.
 - On `TASK_STATUS_CHANGED` it simply logs, but this is the place to fan out notifications or downstream pipelines.
 
 Set your env variables by copying `.env.example` to `.env` inside both `backend/` and `frontend/` (only needed when running outside Docker):
@@ -167,6 +168,12 @@ docker compose ps
   ```
 
   See `infrastructure/DATADOG.md` for the full step-by-step guide, production tips, and validation checklist.
+
+- **Developer pain-point SDLC demo** – A complete Datadog walkthrough for queue failures (detection, triage, CI guardrail, and automation) lives in `infrastructure/DATADOG_SDLC_DEMO.md`. Run it locally with:
+
+  ```bash
+  ./scripts/datadog_painpoint_demo.sh
+  ```
 
 - **DBM flowchart for customer walkthroughs** - Use `infrastructure/DATADOG_DBM_FLOWCHART.md` to explain the setup process for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
 
