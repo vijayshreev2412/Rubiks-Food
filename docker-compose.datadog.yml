@@ -9,6 +9,9 @@ services:
       DD_ENV: ${DD_ENV:-production}
       DD_VERSION: ${DD_VERSION:-1.0.0}
       DD_LOGS_INJECTION: ${DD_LOGS_INJECTION:-true}
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_FAILURE_SIMULATION_ENABLED: ${WORKER_FAILURE_SIMULATION_ENABLED:-false}
+      WORKER_FAILURE_KEYWORD: ${WORKER_FAILURE_KEYWORD:-[fail-worker]}
     depends_on:
       - datadog
 

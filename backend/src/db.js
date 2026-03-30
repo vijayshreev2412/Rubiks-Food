@@ -15,11 +15,21 @@ async function init() {
       title TEXT NOT NULL,
       description TEXT,
       status TEXT DEFAULT 'pending',
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      worker_attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
 
   await pool.query(createTableQuery);
+  await pool.query(
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS worker_attempts INTEGER NOT NULL DEFAULT 0"
+  );
+  await pool.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_error TEXT");
+  await pool.query(
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()"
+  );
 }
 
 module.exports = {

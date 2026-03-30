@@ -35,7 +35,7 @@ app.get("/health", (req, res) => {
 app.get("/api/tasks", async (req, res) => {
   try {
     const result = await db.query(
-      "SELECT id, title, description, status, created_at FROM tasks ORDER BY created_at DESC"
+      "SELECT id, title, description, status, worker_attempts, last_error, created_at, updated_at FROM tasks ORDER BY created_at DESC"
     );
     res.json(result.rows);
   } catch (error) {
@@ -53,7 +53,7 @@ app.post("/api/tasks", async (req, res) => {
 
   try {
     const result = await db.query(
-      "INSERT INTO tasks (title, description) VALUES ($1, $2) RETURNING id, title, description, status, created_at",
+      "INSERT INTO tasks (title, description) VALUES ($1, $2) RETURNING id, title, description, status, worker_attempts, last_error, created_at, updated_at",
       [title, description || null]
     );
     const task = result.rows[0];
@@ -80,7 +80,7 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
 
   try {
     const result = await db.query(
-      "UPDATE tasks SET status = $1 WHERE id = $2 RETURNING id, title, description, status, created_at",
+      "UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title, description, status, worker_attempts, last_error, created_at, updated_at",
       [status, id]
     );
 
@@ -101,21 +101,41 @@ app.patch("/api/tasks/:id/status", async (req, res) => {
   }
 });
 
-async function handleTaskEvent(event) {
+async function handleTaskEvent(event, metadata = {}) {
+  const simulateWorkerFailure =
+    process.env.WORKER_FAILURE_SIMULATION_ENABLED === "true";
+  const failureKeyword = process.env.WORKER_FAILURE_KEYWORD || "[fail-worker]";
   const span = tracer.startSpan("worker.handle_task_event", {
     resource: event?.type ?? "unknown",
     tags: {
       "task.id": event?.payload?.id,
+      "worker.retry_count": metadata.retryCount || 0,
+      "worker.max_retries": metadata.maxRetries || 0,
     },
   });
 
   try {
     switch (event?.type) {
       case "TASK_CREATED":
-        await db.query("UPDATE tasks SET status = $1 WHERE id = $2", [
-          "queued",
-          event.payload.id,
-        ]);
+        if (
+          simulateWorkerFailure &&
+          typeof event?.payload?.title === "string" &&
+          event.payload.title.includes(failureKeyword)
+        ) {
+          throw new Error(
+            `Simulated worker failure for keyword ${failureKeyword}`
+          );
+        }
+
+        await db.query(
+          `UPDATE tasks
+            SET status = $1,
+                worker_attempts = $2,
+                last_error = NULL,
+                updated_at = NOW()
+          WHERE id = $3`,
+          ["queued", (metadata.retryCount || 0) + 1, event.payload.id]
+        );
         span.setTag("task.status", "queued");
         console.log("[queue] Task queued", event.payload.id);
         break;
@@ -135,16 +155,62 @@ async function handleTaskEvent(event) {
   } catch (error) {
     span.setTag("error", error);
     console.error("[queue] Failed to handle event", event, error);
+    throw error;
   } finally {
     span.finish();
   }
+}
+
+async function markTaskAsFailed(event, error, metadata) {
+  const taskId = event?.payload?.id;
+  if (!taskId) {
+    return;
+  }
+
+  await db.query(
+    `UPDATE tasks
+      SET status = $1,
+          worker_attempts = $2,
+          last_error = $3,
+          updated_at = NOW()
+      WHERE id = $4`,
+    [
+      "failed",
+      (metadata?.retryCount || 0) + 1,
+      error?.message || "Unknown worker error",
+      taskId,
+    ]
+  );
+}
+
+async function markTaskRetry(event, error, metadata) {
+  const taskId = event?.payload?.id;
+  if (!taskId) {
+    return;
+  }
+
+  await db.query(
+    `UPDATE tasks
+      SET worker_attempts = $1,
+          last_error = $2,
+          updated_at = NOW()
+      WHERE id = $3`,
+    [
+      metadata?.nextRetryCount || 1,
+      error?.message || "Unknown worker retry error",
+      taskId,
+    ]
+  );
 }
 
 async function start() {
   try {
     await db.init();
     await initRabbitmq();
-    await consumeTaskEvents(handleTaskEvent);
+    await consumeTaskEvents(handleTaskEvent, {
+      onRetry: markTaskRetry,
+      onExhausted: markTaskAsFailed,
+    });
 
     const server = app.listen(PORT, () => {
       console.log(`Backend listening on port ${PORT}`);

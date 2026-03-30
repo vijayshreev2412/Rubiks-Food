@@ -72,3 +72,15 @@ It includes:
 - A single end-to-end flowchart with decision branches by database type.
 - Setup checkpoints for PostgreSQL, MySQL or MariaDB, SQL Server, Oracle, MongoDB, and managed cloud databases.
 - A simple customer talk track and validation checklist.
+
+## SDLC developer pain-point demo
+
+To run a complete "build -> break -> detect -> investigate -> automate" demo focused on async worker failures and queue retries, use:
+
+- `infrastructure/DATADOG_SDLC_DEMO.md`
+
+The demo includes:
+
+- A realistic developer pain point (worker acknowledges failing queue messages unless retry/DLQ safeguards exist).
+- A local automation script (`scripts/datadog_painpoint_demo.sh`) that produces deterministic success/failure traffic.
+- A CI workflow (`.github/workflows/sdlc-painpoint-demo.yml`) that executes the same scenario on demand.
